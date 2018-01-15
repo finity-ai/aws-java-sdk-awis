@@ -1,14 +1,14 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>net.distributary.tahseen</groupId>
+	<groupId>ai.finity</groupId>
 	<artifactId>aws-java-sdk-awis</artifactId>
 	<packaging>jar</packaging>
 	<version>0.2</version>
 
 	<name>aws-java-sdk-awis</name>
 	<description>Amazon Alexa Web Information Service client</description>
-	<url>http://maven.apache.org</url>
+	<url>https://github.com/smallrivers/aws-java-sdk-awis</url>
 
 	<licenses>
 		<license>
@@ -19,19 +19,19 @@
 	</licenses>
 
 	<scm>
-		<url>https://github.com/tahseen/aws-java-sdk-awis.git</url>
+		<url>https://github.com/smallrivers/aws-java-sdk-awis.git</url>
 	</scm>
 	
 	<distributionManagement>
 		<repository>
-			<id>aws-release</id>
-			<name>AWS Release Repository</name>
-			<url>s3://tahseen.distributary.net/release</url>
+			<id>archiva-release</id>
+			<name>Archiva Release Repository</name>
+			<url>https://archiva.qbit.uno/repository/releases/</url>
 		</repository>
 		<snapshotRepository>
-			<id>aws-snapshot</id>
-			<name>AWS Snapshot Repository</name>
-			<url>s3://tahseen.distributary.net/snapshot</url>
+			<id>archiva-snapshot</id>
+			<name>Archiva Snapshot Repository</name>
+			<url>https://archiva.qbit.uno/repository/snapshots/</url>
 		</snapshotRepository>
 	</distributionManagement>
 
@@ -64,7 +64,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.3</version>
+				<version>3.7.0</version>
 				<configuration>
 					<source>1.8</source>
 					<target>1.8</target>
@@ -80,7 +80,7 @@
 							<goal>generate</goal>
 						</goals>
 					</execution>
-				</executions>			
+				</executions>
 				<configuration>
 					<generateDirectory>src/main/java</generateDirectory>
 					<generatePackage>net.distributary.tahseen.awis.generated</generatePackage>
