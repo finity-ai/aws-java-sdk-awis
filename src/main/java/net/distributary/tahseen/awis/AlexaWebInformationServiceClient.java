@@ -35,7 +35,7 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class AlexaWebInformationServiceClient {
-    protected final static Logger logger = LoggerFactory.getLogger(AlexaWebInformationServiceClient.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlexaWebInformationServiceClient.class);
 
     private static final String SERVICE_HOST = "awis.amazonaws.com";
     private static final String SERVICE_ENDPOINT = "awis.us-west-1.amazonaws.com";
@@ -49,31 +49,17 @@ public class AlexaWebInformationServiceClient {
     private static final String ALGORITHM = "AWS4-HMAC-SHA256";
     private static final String SIGNED_HEADERS = "host;x-amz-date";
 
-    private AWSCredentials credentials;
+    // static init as TimeZone.getTimeZone is synchronised => lead to contention!
+    private static final TimeZone GMT_TIMEZONE = TimeZone.getTimeZone("GMT");
 
-    public String amzDate;
-    public String dateStamp;
+    private final AWSCredentials credentials;
 
-    private Map<String, String> queryParams;
-
-    public AlexaWebInformationServiceClient(AWSCredentials credentials) {
+    public AlexaWebInformationServiceClient(final AWSCredentials credentials) {
         if (credentials == null) {
             throw new IllegalArgumentException("Parameter credentials can not be null.");
         }
 
         this.credentials = credentials;
-
-        queryParams = new TreeMap<>();
-        queryParams.put("AWSAccessKeyId", credentials.getAWSAccessKeyId());
-
-        Date now = new Date();
-        SimpleDateFormat formatAWS = new SimpleDateFormat(DATEFORMAT_AWS);
-        formatAWS.setTimeZone(TimeZone.getTimeZone("GMT"));
-        this.amzDate = formatAWS.format(now);
-
-        SimpleDateFormat formatCredential = new SimpleDateFormat(DATEFORMAT_CREDENTIAL);
-        formatCredential.setTimeZone(TimeZone.getTimeZone("GMT"));
-        this.dateStamp = formatCredential.format(now);
     }
 
     /**
@@ -82,14 +68,25 @@ public class AlexaWebInformationServiceClient {
      * @param date current date
      * @return timestamp
      */
-    protected static String getTimestamp(Date date) {
-        SimpleDateFormat format = new SimpleDateFormat(DATEFORMAT_AWS);
-        format.setTimeZone(TimeZone.getTimeZone("GMT"));
+    protected static String getTimestamp(final Date date) {
+        final SimpleDateFormat format = new SimpleDateFormat(DATEFORMAT_AWS);
+        format.setTimeZone(GMT_TIMEZONE);
         return format.format(date);
     }
 
-    protected String sha256(String textToHash) throws UnsupportedEncodingException, NoSuchAlgorithmException {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    /**
+     * Genereates a timestamp for use with AWS credential scope signing
+     * @param date current date
+     * @return properly formatted timestamp
+     */
+    protected static String getCredentialScopeTimestamp(final Date date) {
+        final SimpleDateFormat format = new SimpleDateFormat(DATEFORMAT_CREDENTIAL);
+        format.setTimeZone(GMT_TIMEZONE);
+        return format.format(date);
+    }
+
+    protected String sha256(final String textToHash) throws UnsupportedEncodingException, NoSuchAlgorithmException {
+        final MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] byteOfTextToHash = textToHash.getBytes("UTF-8");
         byte[] hashedByteArray = digest.digest(byteOfTextToHash);
         return bytesToHex(hashedByteArray);
@@ -102,7 +99,7 @@ public class AlexaWebInformationServiceClient {
     }
 
     protected String bytesToHex(byte[] bytes) {
-        StringBuffer result = new StringBuffer();
+        final StringBuilder result = new StringBuilder();
         for (byte byt : bytes)
             result.append(Integer.toString((byt & 0xff) + 0x100, 16).substring(1));
         return result.toString();
@@ -204,22 +201,25 @@ public class AlexaWebInformationServiceClient {
      * Computes RFC 2104-compliant HMAC signature.
      *
      * @param query The data to be signed.
+     * @param credentialScope credential scope.
+     * @param amzDate Date in DATEFORMAT_AWS format.
+     * @param dateStamp Date in YYYYMMDD format
+     *
      * @return The base64-encoded RFC 2104-compliant HMAC signature.
      * @throws java.security.SignatureException when signature generation fails
      */
-    protected String generateSignature(String query, String credentialScope) throws SignatureException {
-        if (credentials == null) {
-            throw new IllegalStateException("AWS credentials are not intialized.");
-        }
-        try {
-            String canonicalHeaders = "host:" + SERVICE_ENDPOINT + "\n" + "x-amz-date:" + this.amzDate + "\n";
+    protected String generateSignature(String query, String credentialScope, String amzDate, String dateStamp)
+          throws SignatureException {
 
-            String payloadHash = this.sha256("");
-            String canonicalRequest =
+        try {
+            final String canonicalHeaders = "host:" + SERVICE_ENDPOINT + "\n" + "x-amz-date:" + amzDate + "\n";
+
+            final String payloadHash = this.sha256("");
+            final String canonicalRequest =
                     "GET" + "\n" + SERVICE_URI + "\n" + query + "\n" + canonicalHeaders + "\n" + SIGNED_HEADERS + "\n" + payloadHash;
 
-            String stringToSign = ALGORITHM + '\n' + this.amzDate + '\n' + credentialScope + '\n' + this.sha256(canonicalRequest);
-            byte[] signingKey = getSignatureKey(credentials.getAWSSecretKey(), this.dateStamp, SERVICE_REGION, SERVICE_NAME);
+            final String stringToSign = ALGORITHM + '\n' + amzDate + '\n' + credentialScope + '\n' + this.sha256(canonicalRequest);
+            byte[] signingKey = getSignatureKey(credentials.getAWSSecretKey(), dateStamp, SERVICE_REGION, SERVICE_NAME);
 
             // Sign the string_to_sign using the signing_key
             return bytesToHex(HmacSHA256(stringToSign, signingKey));
@@ -243,12 +243,10 @@ public class AlexaWebInformationServiceClient {
     public UrlInfoResponse getUrlInfo(UrlInfoRequest request) throws SignatureException, IOException, JAXBException {
         String xmlResponse = getResponse(request);
 
-        JAXBContext jc = JAXBContext.newInstance(UrlInfoResponse.class);
+        final JAXBContext jc = JAXBContext.newInstance(UrlInfoResponse.class);
 
         Unmarshaller unmarshaller = jc.createUnmarshaller();
-        UrlInfoResponse response = (UrlInfoResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-        return response;
+        return (UrlInfoResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
     }
 
     /**
@@ -264,12 +262,10 @@ public class AlexaWebInformationServiceClient {
     public TrafficHistoryResponse getTrafficHistory(TrafficHistoryRequest request) throws JAXBException, IOException, SignatureException {
         String xmlResponse = getResponse(request);
 
-        JAXBContext jc = JAXBContext.newInstance(TrafficHistoryResponse.class);
+        final JAXBContext jc = JAXBContext.newInstance(TrafficHistoryResponse.class);
 
         Unmarshaller unmarshaller = jc.createUnmarshaller();
-        TrafficHistoryResponse response = (TrafficHistoryResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-        return response;
+        return (TrafficHistoryResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
     }
 
     /**
@@ -292,9 +288,7 @@ public class AlexaWebInformationServiceClient {
         JAXBContext jc = JAXBContext.newInstance(CategoryBrowseResponse.class);
 
         Unmarshaller unmarshaller = jc.createUnmarshaller();
-        CategoryBrowseResponse response = (CategoryBrowseResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-        return response;
+        return (CategoryBrowseResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
     }
 
     /***
@@ -314,9 +308,7 @@ public class AlexaWebInformationServiceClient {
         JAXBContext jc = JAXBContext.newInstance(CategoryListingsResponse.class);
 
         Unmarshaller unmarshaller = jc.createUnmarshaller();
-        CategoryListingsResponse response = (CategoryListingsResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-        return response;
+        return (CategoryListingsResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
     }
 
     /**
@@ -336,29 +328,33 @@ public class AlexaWebInformationServiceClient {
         JAXBContext jc = JAXBContext.newInstance(SitesLinkingInResponse.class);
 
         Unmarshaller unmarshaller = jc.createUnmarshaller();
-        SitesLinkingInResponse response = (SitesLinkingInResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
-
-        return response;
+        return (SitesLinkingInResponse) unmarshaller.unmarshal(new StringReader(xmlResponse));
     }
 
     private <T> String getResponse(Request<T> request) throws IOException, SignatureException {
-        String query = buildQueryString(request);
-        String credentialScope = this.dateStamp + "/" + SERVICE_REGION + "/" + SERVICE_NAME + "/" + "aws4_request";
+        final Date now = new Date();
+        final String amzDate = getTimestamp(now);
+        final String dateStamp = getCredentialScopeTimestamp(now);
 
-        String signature = generateSignature(query, credentialScope);
+        final String query = buildQueryString(request);
+        final String credentialScope = dateStamp + "/" + SERVICE_REGION + "/" + SERVICE_NAME + "/" + "aws4_request";
 
-        String uri = AWS_BASE_URL + "?" + query;
+        final String signature = generateSignature(query, credentialScope, amzDate, dateStamp);
 
-        logger.info("Request Url: {}", uri);
+        final String uri = AWS_BASE_URL + "?" + query;
 
-        String authorization =
+        LOGGER.debug("Request Url: {}", uri);
+
+        final String authorization =
                 ALGORITHM + " " + "Credential=" + credentials.getAWSAccessKeyId() + "/" + credentialScope + ", " + "SignedHeaders=" + SIGNED_HEADERS
                         + ", " + "Signature=" + signature;
-        String xmlResponse = makeRequest(uri, authorization, this.amzDate);
+        String xmlResponse = makeRequest(uri, authorization, amzDate);
 
         xmlResponse = xmlResponse.replace("xmlns:aws=\"http://awis.amazonaws.com/doc/2005-07-11\"", "");
         xmlResponse = xmlResponse.replace("xmlns:aws=\"http://alexa.amazonaws.com/doc/2005-10-05/\"", "");
-        logger.info(xmlResponse);
+
+        LOGGER.debug(xmlResponse);
+
         return xmlResponse;
     }
 
@@ -380,7 +376,7 @@ public class AlexaWebInformationServiceClient {
         try {
             in = conn.getInputStream();
         } catch (Exception e) {
-            logger.error("Http request failed.", e);
+            LOGGER.error("Http request failed.", e);
             in = conn.getErrorStream();
         }
 
